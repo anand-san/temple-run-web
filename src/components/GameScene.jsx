@@ -8,7 +8,7 @@ import Road from './Road';
 import Obstacle from './Obstacle';
 import Coin from './Coin';
 
-const GameScene = ({ gameStarted, gameOver, onGameOver, onScorePoints }) => {
+const GameScene = ({ gameStarted, gameOver, onGameOver, onScorePoints, mobileInputs }) => {
   const [obstacles, setObstacles] = useState([]);
   const [coins, setCoins] = useState([]);
   const [speed, setSpeed] = useState(15);
@@ -23,37 +23,42 @@ const GameScene = ({ gameStarted, gameOver, onGameOver, onScorePoints }) => {
   // Setup keyboard controls
   const { leftPressed, rightPressed, jumpPressed } = useKeyboardControls();
   
+  // Combined input detection (keyboard or mobile)
+  const inputLeftPressed = leftPressed || (mobileInputs && mobileInputs.leftPressed);
+  const inputRightPressed = rightPressed || (mobileInputs && mobileInputs.rightPressed);
+  const inputJumpPressed = jumpPressed || (mobileInputs && mobileInputs.jumpPressed);
+  
   // Track the key release state to handle one lane change per click
   const keyReleased = useRef({ left: true, right: true });
 
-  // Handle player movement based on keyboard input directly
+  // Handle player movement based on combined input (keyboard or mobile)
   useEffect(() => {
     if (!gameStarted || gameOver) return;
 
-    // Only change lane once per key press (wait for key to be released between changes)
-    if (leftPressed && playerLane > 0 && keyReleased.current.left) {
+    // Only change lane once per input (wait for release between changes)
+    if (inputLeftPressed && playerLane > 0 && keyReleased.current.left) {
       setPlayerLane(prev => prev - 1);
-      keyReleased.current.left = false; // Mark key as processed
-    } else if (rightPressed && playerLane < 3 && keyReleased.current.right) {
+      keyReleased.current.left = false; // Mark input as processed
+    } else if (inputRightPressed && playerLane < 3 && keyReleased.current.right) {
       setPlayerLane(prev => prev + 1);
-      keyReleased.current.right = false; // Mark key as processed
+      keyReleased.current.right = false; // Mark input as processed
     }
     
-    // Reset key released state when key is released
-    if (!leftPressed) {
+    // Reset key released state when input is released
+    if (!inputLeftPressed) {
       keyReleased.current.left = true;
     }
-    if (!rightPressed) {
+    if (!inputRightPressed) {
       keyReleased.current.right = true;
     }
     
     // Handle jumping separately
-    if (jumpPressed && !playerJumping) {
+    if (inputJumpPressed && !playerJumping) {
       setPlayerJumping(true);
       setTimeout(() => setPlayerJumping(false), 500); // Jump duration
     }
     
-  }, [leftPressed, rightPressed, jumpPressed, gameStarted, gameOver, playerJumping, playerLane]);
+  }, [inputLeftPressed, inputRightPressed, inputJumpPressed, gameStarted, gameOver, playerJumping, playerLane]);
 
   // Generate obstacles randomly
   useEffect(() => {
