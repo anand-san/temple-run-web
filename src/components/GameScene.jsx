@@ -8,7 +8,7 @@ import Road from './Road';
 import Obstacle from './Obstacle';
 import Coin from './Coin';
 
-const GameScene = ({ gameStarted, gameOver, onGameOver, onScorePoints, mobileInputs }) => {
+const GameScene = ({ gameStarted, gameOver, onGameOver, onScorePoints, onJump, onObstacleAppeared, mobileInputs }) => {
   const [obstacles, setObstacles] = useState([]);
   const [coins, setCoins] = useState([]);
   const [speed, setSpeed] = useState(15);
@@ -55,6 +55,7 @@ const GameScene = ({ gameStarted, gameOver, onGameOver, onScorePoints, mobileInp
     // Handle jumping separately
     if (inputJumpPressed && !playerJumping) {
       setPlayerJumping(true);
+      onJump(); // Trigger jump sound
       setTimeout(() => setPlayerJumping(false), 500); // Jump duration
     }
     
@@ -75,6 +76,9 @@ const GameScene = ({ gameStarted, gameOver, onGameOver, onScorePoints, mobileInp
       };
       
       setObstacles(prev => [...prev, newObstacle]);
+      
+      // Trigger animal sound for the appearing obstacle
+      onObstacleAppeared(obstacleType);
     }, 2000);
     
     return () => clearInterval(obstacleInterval);
