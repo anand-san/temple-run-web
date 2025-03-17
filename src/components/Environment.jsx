@@ -1,12 +1,9 @@
-import React, { useMemo, useRef } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import React, { useMemo, useRef, useEffect } from 'react';
+import { useFrame } from '@react-three/fiber';
 import { 
   TextureLoader, 
   RepeatWrapping, 
-  SphereGeometry, 
-  MeshBasicMaterial, 
   BackSide,
-  Vector3,
   Color
 } from 'three';
 
@@ -97,82 +94,81 @@ const Environment = () => {
     return texture;
   }, []);
   
-  // Generate trees with nicer models
+  // Generate simplified trees
   const trees = useMemo(() => {
     const trees = [];
     
-    // Tree types
+    // Simplified tree types with less geometry
     const treeTypes = [
-      // Palm-like tree
+      // Basic tree type 1
       {
         trunk: { height: 7, radius: 0.4, color: '#8B4513' },
         leaves: { 
-          type: 'palm',
-          color: '#558B2F',
-          segmentCount: 5
+          type: 'simple',
+          color: '#558B2F'
         }
       },
-      // Pine-like tree
+      // Basic tree type 2
       {
         trunk: { height: 8, radius: 0.5, color: '#5D4037' },
         leaves: { 
-          type: 'pine',
-          color: '#2E7D32',
-          segmentCount: 4
+          type: 'simple',
+          color: '#2E7D32'
         }
       },
-      // Tropical tree
+      // Basic tree type 3
       {
         trunk: { height: 6, radius: 0.6, color: '#6D4C41' },
         leaves: { 
-          type: 'round',
-          color: '#388E3C',
-          segmentCount: 1
+          type: 'simple',
+          color: '#388E3C'
         }
       }
     ];
     
-    // Create trees on both sides of the path
-    for (let i = 0; i < 60; i++) {
+    // Create fewer trees for better performance (reduced from 60 to 30 per side)
+    for (let i = 0; i < 30; i++) {
       // Pick a random tree type
       const treeType = treeTypes[Math.floor(Math.random() * treeTypes.length)];
       
       // Right side trees 
       trees.push({
         id: `right-${i}`,
-        position: [-10 - Math.random() * 40, 0, 100 + i * 20], // Positive Z = in front of player
+        position: [-10 - Math.random() * 40, 0, 100 + i * 40], // More spacing between trees (i * 40)
         scale: 0.8 + Math.random() * 0.6,
         rotation: Math.random() * Math.PI * 2,
-        type: treeType
+        type: treeType,
+        side: 'right'
       });
       
       // Left side trees
       trees.push({
         id: `left-${i}`,
-        position: [10 + Math.random() * 40, 0, 100 + i * 20], // Positive Z = in front of player
+        position: [10 + Math.random() * 40, 0, 100 + i * 40], // More spacing between trees
         scale: 0.8 + Math.random() * 0.6,
         rotation: Math.random() * Math.PI * 2,
-        type: treeType
+        type: treeType,
+        side: 'left'
       });
     }
     
     return trees;
   }, []);
   
-  // Generate clouds
+  // Generate fewer clouds for better performance
   const clouds = useMemo(() => {
     const clouds = [];
     
-    // Create clouds at various positions
-    for (let i = 0; i < 30; i++) {
+    // Reduced cloud count from 30 to 15
+    for (let i = 0; i < 15; i++) {
       clouds.push({
         id: `cloud-${i}`,
         position: [
           -100 + Math.random() * 200, 
           50 + Math.random() * 30, 
-          100 + i * 30
+          100 + i * 60  // More spacing between clouds
         ],
-        scale: 5 + Math.random() * 10,
+        scale: 7 + Math.random() * 10, // Slightly larger to compensate for fewer clouds
         speed: 0.5 + Math.random() * 1.5
       });
     }
@@ -223,48 +219,86 @@ const Environment = () => {
     };
   }, []);
 
-  // Move environment elements as player runs
+  // Store positions and use batched updates for better performance
+  const treePositionsRef = useRef([]);
+  const cloudPositionsRef = useRef([]);
+  
+  // Initialize positions in ref
+  useEffect(() => {
+    treePositionsRef.current = trees.map(tree => ({
+      id: tree.id,
+      x: tree.position[0],
+      y: tree.position[1],
+      z: tree.position[2],
+      side: tree.side
+    }));
+    
+    cloudPositionsRef.current = clouds.map(cloud => ({
+      id: cloud.id,
+      x: cloud.position[0],
+      y: cloud.position[1],
+      z: cloud.position[2],
+      speed: cloud.speed
+    }));
+  }, [trees, clouds]);
+  
+  // We'll move tree updates back to useFrame for smoother movement
+  
+  // Use useFrame for all animations to ensure smooth movement
   useFrame((state, delta) => {
     // Move trees
     if (treesRef.current.length > 0) {
-      treesRef.current.forEach(tree => {
-        if (tree) {
-          // Move tree backward to create illusion of forward movement
-          tree.position.z -= 15 * delta;
+      treesRef.current.forEach((tree, index) => {
+        if (tree && treePositionsRef.current[index]) {
+          const treePos = treePositionsRef.current[index];
           
-          // If tree is behind camera, move it far ahead
-          if (tree.position.z < -20) {
-            tree.position.z = 1200;
+          // Move tree backward for smooth motion
+          treePos.z -= 15 * delta;
+          
+          // Recycle tree if it's behind the camera
+          if (treePos.z < -20) {
+            treePos.z = 1200;
             // Randomize X position when recycling
-            tree.position.x = tree.position.x < 0 
-              ? -10 - Math.random() * 40 
+            treePos.x = treePos.side === 'right'
+              ? -10 - Math.random() * 40
               : 10 + Math.random() * 40;
           }
+          
+          // Update the actual tree position
+          tree.position.x = treePos.x;
+          tree.position.z = treePos.z;
         }
       });
     }
     
-    // Move clouds slowly
+    // Move clouds
     if (cloudsRef.current.length > 0) {
       cloudsRef.current.forEach((cloud, index) => {
-        if (cloud) {
+        if (cloud && cloudPositionsRef.current[index]) {
+          const cloudPos = cloudPositionsRef.current[index];
+          
           // Move cloud backward (toward player)
-          cloud.position.z -= (5 + clouds[index].speed) * delta;
+          cloudPos.z -= (5 + cloudPos.speed) * delta;
           
           // Gentle drift sideways
-          cloud.position.x += Math.sin(state.clock.elapsedTime * 0.1 + index) * 0.05;
+          cloudPos.x += Math.sin(state.clock.elapsedTime * 0.1 + index) * 0.05;
           
           // Reset cloud position when it passes the camera
-          if (cloud.position.z < -50) {
-            cloud.position.z = 1000;
-            cloud.position.x = -100 + Math.random() * 200;
-            cloud.position.y = 50 + Math.random() * 30;
+          if (cloudPos.z < -50) {
+            cloudPos.z = 1000;
+            cloudPos.x = -100 + Math.random() * 200;
+            cloudPos.y = 50 + Math.random() * 30;
           }
+          
+          // Update the actual cloud position
+          cloud.position.x = cloudPos.x;
+          cloud.position.y = cloudPos.y;
+          cloud.position.z = cloudPos.z;
         }
       });
     }
     
-    // Subtle sun movement
+    // Subtle sun movement - keep this lightweight animation
     if (sunRef.current) {
       // Make sun slightly pulse/glow
       const pulseScale = 1 + Math.sin(state.clock.elapsedTime) * 0.04;
@@ -371,7 +405,7 @@ const Environment = () => {
         ))}
       </group>
       
-      {/* Trees - much more detailed */}
+      {/* Simplified trees for better performance */}
       {trees.map((tree, index) => (
         <group 
           key={tree.id} 
@@ -380,111 +414,31 @@ const Environment = () => {
           rotation={[0, tree.rotation, 0]}
           ref={el => treesRef.current[index] = el}
         >
-          {/* Tree trunk */}
+          {/* Tree trunk - simplified cylinder */}
           <mesh castShadow position={[0, tree.type.trunk.height / 2, 0]}>
             <cylinderGeometry 
               args={[
                 tree.type.trunk.radius * 0.7,
                 tree.type.trunk.radius,
                 tree.type.trunk.height,
-                8
+                6  // Reduced segments
               ]} 
             />
             <meshStandardMaterial color={tree.type.trunk.color} roughness={0.9} />
           </mesh>
           
-          {/* Tree leaves - different types */}
-          {tree.type.leaves.type === 'palm' && (
-            // Palm fronds
-            [...Array(8)].map((_, i) => {
-              const angle = (i / 8) * Math.PI * 2;
-              const bendAngle = Math.PI / 4; // Bend outward
-              
-              return (
-                <group 
-                  key={`frond-${i}`} 
-                  position={[0, tree.type.trunk.height, 0]} 
-                  rotation={[
-                    Math.sin(angle) * bendAngle,
-                    angle,
-                    Math.cos(angle) * bendAngle
-                  ]}
-                >
-                  <mesh castShadow>
-                    <coneGeometry args={[0.2, 4, 8]} />
-                    <meshStandardMaterial color="#8D6E63" />
-                  </mesh>
-                  
-                  {/* Palm leaves */}
-                  <mesh castShadow position={[0, 2, 0]}>
-                    <boxGeometry args={[3, 0.1, 5]} />
-                    <meshStandardMaterial color={tree.type.leaves.color} roughness={0.8} />
-                  </mesh>
-                </group>
-              );
-            })
-          )}
-          
-          {tree.type.leaves.type === 'pine' && (
-            // Stacked pine cones
-            [...Array(tree.type.leaves.segmentCount)].map((_, i) => {
-              const segmentHeight = 2.5;
-              const segmentSize = 2 * (1 - i / tree.type.leaves.segmentCount * 0.5);
-              
-              return (
-                <mesh 
-                  key={`pinecone-${i}`} 
-                  castShadow 
-                  position={[
-                    0, 
-                    tree.type.trunk.height + i * segmentHeight, 
-                    0
-                  ]}
-                >
-                  <coneGeometry args={[segmentSize, segmentHeight * 2, 8]} />
-                  <meshStandardMaterial 
-                    color={tree.type.leaves.color} 
-                    roughness={0.8} 
-                  />
-                </mesh>
-              );
-            })
-          )}
-          
-          {tree.type.leaves.type === 'round' && (
-            // Round foliage
-            <group position={[0, tree.type.trunk.height + 2, 0]}>
-              <mesh castShadow>
-                <sphereGeometry args={[3, 16, 16]} />
-                <meshStandardMaterial 
-                  color={tree.type.leaves.color} 
-                  roughness={0.8} 
-                />
-              </mesh>
-              
-              {/* Add some smaller spheres for detail */}
-              {[...Array(5)].map((_, i) => {
-                const angle = (i / 5) * Math.PI * 2;
-                const radius = 2.5;
-                const x = Math.cos(angle) * radius;
-                const z = Math.sin(angle) * radius;
-                
-                return (
-                  <mesh 
-                    key={`leaf-cluster-${i}`} 
-                    castShadow 
-                    position={[x, Math.random() * 2 - 1, z]}
-                  >
-                    <sphereGeometry args={[1.5, 8, 8]} />
-                    <meshStandardMaterial 
-                      color={tree.type.leaves.color} 
-                      roughness={0.8} 
-                    />
-                  </mesh>
-                );
-              })}
-            </group>
-          )}
+          {/* Single simplified tree top for all tree types */}
+          <mesh 
+            castShadow 
+            position={[0, tree.type.trunk.height + 1.5, 0]}
+          >
+            {/* Using a lower-poly cone instead of complex geometries */}
+            <coneGeometry args={[2.5, 5, 6]} /> 
+            <meshStandardMaterial 
+              color={tree.type.leaves.color} 
+              roughness={0.8} 
+            />
+          </mesh>
         </group>
       ))}
       
